@@ -13,6 +13,7 @@ Before doing anything technical, tell the user what they're about to get:
 > Here's what makes it great:
 > - **See all your open tabs at a glance** grouped by domain on a grid
 > - **Homepages group** pulls Gmail, X, LinkedIn, YouTube, GitHub homepages into one card for easy cleanup
+> - **By topic view** regroups the grid by what the pages are about: your Chrome tab groups first, then your own keyword rules, then similar titles clustered automatically, all on-device
 > - **Close tabs with style** satisfying swoosh sound + confetti burst
 > - **Duplicate detection** flags when you have the same page open twice
 > - **Click any tab title to jump to it** even across different Chrome windows
@@ -83,8 +84,9 @@ Once the extension is loaded:
 > 5. **Click "Close all N tabs"** on a group to close the whole thing.
 > 6. **Duplicate tabs** are flagged with an amber "(2x)" badge. Click "Close duplicates" to keep one copy.
 > 7. **Save a tab for later** by clicking the bookmark icon before closing it. Saved tabs appear in the sidebar.
+> 8. **Click "By topic"** in the section header to regroup by what the tabs are about. Your Chrome tab groups show first, then any rules from your personal config, then similar titles clustered together. Tab Out remembers which view you chose.
 >
-> That's it! No server to run, no config files. Everything works right away.
+> That's it! No server to run, no config files required. (Optional: copy `extension/config.local.example.js` to `extension/config.local.js` for personal homepages, custom groups and topic rules.)
 
 ---
 
@@ -92,5 +94,6 @@ Once the extension is loaded:
 
 - Tab Out is a pure Chrome extension. No server, no Node.js, no npm.
 - Saved tabs are stored in `chrome.storage.local` (persists across sessions).
-- 100% local. No data is sent to any external service.
+- 100% local. No data is sent to any external service. Topic grouping runs on tab titles and URL paths inside the extension page; the `tabGroups` permission is used only to read the names of Chrome tab groups.
+- Personal config is optional: `extension/config.local.example.js` documents `LOCAL_LANDING_PAGE_PATTERNS`, `LOCAL_CUSTOM_GROUPS` and `LOCAL_TOPIC_RULES`; the real `config.local.js` is gitignored.
 - To update: `cd tab-out && git pull`, then reload the extension in `chrome://extensions`.

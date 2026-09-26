@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tab Out Topic Grouping</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ink: #1a1613;
+    --paper: #f8f5f0;
+    --card: #fffdf9;
+    --warm-gray: #e8e2da;
+    --muted: #7d746c;
+    --amber: #c8713a;
+    --sage: #5a7a62;
+    --slate: #5a6b7a;
+    --rose: #b35a5a;
+    --amber-soft: #f3e3d5;
+    --sage-soft: #e0e8e2;
+    --rose-soft: #f0dede;
+    --slate-soft: #e1e6ea;
+    --shadow: rgba(26, 22, 19, 0.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ink: #ece6dd;
+      --paper: #17140f;
+      --card: #211c16;
+      --warm-gray: #37302a;
+      --muted: #a0968c;
+      --amber: #e0925b;
+      --sage: #86a88f;
+      --slate: #8fa2b3;
+      --rose: #d27a7a;
+      --amber-soft: #3a2a1d;
+      --sage-soft: #1f2b22;
+      --rose-soft: #3a2323;
+      --slate-soft: #232b32;
+      --shadow: rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ink: #ece6dd;
+    --paper: #17140f;
+    --card: #211c16;
+    --warm-gray: #37302a;
+    --muted: #a0968c;
+    --amber: #e0925b;
+    --sage: #86a88f;
+    --slate: #8fa2b3;
+    --rose: #d27a7a;
+    --amber-soft: #3a2a1d;
+    --sage-soft: #1f2b22;
+    --rose-soft: #3a2323;
+    --slate-soft: #232b32;
+    --shadow: rgba(0, 0, 0, 0.35);
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding-block: 40px 72px;
+    padding-inline: 20px;
+  }
+  h1, h2, h3 { text-wrap: balance; line-height: 1.15; margin: 0; }
+  h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 700; letter-spacing: -0.02em; }
+  h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  h3 { font-size: 16px; font-weight: 700; }
+  p { margin: 0; max-width: 68ch; }
+  code, .mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.86em;
+  }
+  code { background: var(--warm-gray); padding: 1px 6px; border-radius: 4px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  header { display: grid; gap: 14px; margin-bottom: 36px; }
+  header p.lede { font-size: 18px; color: var(--muted); max-width: 60ch; }
+
+  .verdict {
+    background: var(--card);
+    border-left: 4px solid var(--amber);
+    box-shadow: 0 2px 10px var(--shadow);
+    padding: 22px 24px;
+    display: grid; gap: 10px;
+    margin-bottom: 44px;
+  }
+  .verdict .big { font-size: 21px; font-weight: 700; line-height: 1.3; max-width: 32ch; }
+
+  section { display: grid; gap: 18px; margin-bottom: 48px; }
+  .sec-head { display: grid; gap: 4px; }
+
+  .code-tag {
+    display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500;
+    padding: 2px 8px; border-radius: 999px; background: var(--slate-soft); color: var(--slate);
+    margin-right: 8px; vertical-align: 2px;
+  }
+  .code-tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .code-tag.sage  { background: var(--sage-soft);  color: var(--sage); }
+
+  .findings { display: grid; gap: 14px; }
+  .finding {
+    display: grid; gap: 8px;
+    padding: 18px 20px; background: var(--card);
+    border: 1px solid var(--warm-gray);
+  }
+  .finding h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+
+  /* pipeline diagram */
+  .pipe {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+    padding: 20px; background: var(--card); border: 1px solid var(--warm-gray);
+    overflow-x: auto;
+  }
+  .step { display: grid; gap: 6px; min-width: 0; }
+  .step .n { font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+  .step .box {
+    padding: 12px; border-radius: 6px; font-size: 14px; line-height: 1.4;
+    background: var(--paper); border: 1px solid var(--warm-gray);
+    min-height: 92px; display: grid; align-content: start; gap: 4px;
+  }
+  .step .box.have { border-color: var(--sage); background: var(--sage-soft); }
+  .step .box.new  { border-color: var(--amber); background: var(--amber-soft); border-style: dashed; }
+  .step .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+  .step .box.have .tag { color: var(--sage); }
+  .step .box.new  .tag { color: var(--amber); }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .legend .h::before { background: var(--sage); }
+  .legend .w::before { background: var(--amber); }
+
+  /* title examples table */
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--warm-gray); background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--warm-gray); vertical-align: top; }
+  th { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: var(--paper); }
+  tr:last-child td { border-bottom: 0; }
+  td.k { font-weight: 700; white-space: nowrap; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+  .pill.yes { background: var(--sage-soft); color: var(--sage); }
+  .pill.no  { background: var(--rose-soft); color: var(--rose); }
+  .pill.mid { background: var(--amber-soft); color: var(--amber); }
+  .rec td { background: var(--sage-soft); }
+
+  .decision {
+    background: var(--card); border: 2px solid var(--sage);
+    padding: 22px 24px; display: grid; gap: 12px;
+  }
+  .decision ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+  .decision li { max-width: 68ch; }
+
+  .plain {
+    background: var(--slate-soft); padding: 22px 24px; display: grid; gap: 12px;
+  }
+  .plain h2 { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+  .plain p { max-width: 70ch; }
+
+  .foot { font-size: 13px; color: var(--muted); border-top: 1px solid var(--warm-gray); padding-top: 16px; }
+
+  @media (max-width: 620px) {
+    .pipe { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Tab Out · feature assessment · 26 Sep 2026</div>
+    <h1>Which page content should topic grouping run on?</h1>
+    <p class="lede">Tab Out groups open tabs by domain. You want a second view that groups them by what each page is about. This page says which content to use, why, and how to turn it into topics without leaving the browser.</p>
+  </header>
+
+  <div class="verdict">
+    <div class="eyebrow">Verdict</div>
+    <div class="big">Use the cleaned tab title plus the words in the URL path. Nothing deeper.</div>
+    <p>Chrome already gives the extension both, for every tab, in one call, in about a millisecond. The extension already cleans titles. Every richer signal costs a new permission, a per-tab crawl, and fails on sleeping tabs.</p>
+  </div>
+
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">What the extension already has</div>
+      <h2>Two of four pipeline stages exist today</h2>
+    </div>
+    <div class="pipe">
+      <div class="step">
+        <div class="n">1 · Read</div>
+        <div class="box have">
+          <span class="tag">Exists</span>
+          <span><code>chrome.tabs.query()</code> in <code>fetchOpenTabs()</code></span>
+          <span>Returns <code>url</code>, <code>title</code>, <code>groupId</code> for every tab, including sleeping ones.</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">2 · Clean</div>
+        <div class="box have">
+          <span class="tag">Exists</span>
+          <span><code>stripTitleNoise</code> → <code>smartTitle</code> → <code>cleanTitle</code></span>
+          <span>Drops "(3)" counts, emails, " - YouTube" suffixes, "on X:" noise.</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">3 · Classify</div>
+        <div class="box new">
+          <span class="tag">New</span>
+          <span>Topic rules, then clustering</span>
+          <span>Input: cleaned title + path tokens. Output: a topic key per tab.</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">4 · Render</div>
+        <div class="box new">
+          <span class="tag">Small change</span>
+          <span>"By topic" toggle beside "By domain"</span>
+          <span>Reuses <code>renderDomainCard</code> with a topic label instead of a hostname.</span>
+        </div>
+      </div>
+    </div>
+    <div class="legend"><span class="h">Already in <code>extension/app.js</code></span><span class="w">To build</span></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">Findings</div>
+      <h2>Why title and path, and not the page body</h2>
+    </div>
+    <div class="findings">
+      <div class="finding">
+        <h3><span class="code-tag">F1</span> Title and URL are free. Everything else is expensive.</h3>
+        <p>The <code>tabs</code> permission you already hold returns the title of every open tab with no page loading. Chrome keeps the title even for discarded (sleeping) tabs. Reading a meta description, Open Graph tag, page body or video description needs the <code>scripting</code> permission plus <code>&lt;all_urls&gt;</code> host access, a script injected into each tab one at a time, and it fails on sleeping tabs, PDF viewers and internal pages. That turns a 1 ms read into a multi-second crawl and makes Chrome warn "read and change all your data on all websites".</p>
+      </div>
+      <div class="finding">
+        <h3><span class="code-tag">F2</span> Titles are already topic-rich on the sites that matter.</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Site</th><th>What the tab title holds</th><th>What the path adds</th></tr></thead>
+            <tbody>
+              <tr><td class="k">YouTube</td><td>The video title ("How Transformers Work - YouTube")</td><td><code>/watch</code>, so treat it as a video</td></tr>
+              <tr><td class="k">Google Docs / Notion</td><td>The document title</td><td>Nothing useful (opaque IDs)</td></tr>
+              <tr><td class="k">Gmail</td><td>The email subject</td><td><code>#inbox/</code> vs <code>#sent/</code></td></tr>
+              <tr><td class="k">GitHub</td><td>"owner/repo: description"</td><td><code>/owner/repo/issues/12</code>, repo name and section</td></tr>
+              <tr><td class="k">Reddit</td><td>The post title</td><td><code>/r/subreddit/</code>, a ready-made topic label</td></tr>
+              <tr><td class="k">arXiv, Substack, news</td><td>The article title</td><td>Section slugs like <code>/technology/</code></td></tr>
+              <tr><td class="k">X</td><td>"user on X: tweet text", already normalised by <code>stripTitleNoise</code></td><td>Username</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Weak spots: login-walled tabs show "Sign in", some web apps show a bare product name, and titles come in whatever language the page uses. Those tabs fall through to the domain group, which is fine.</p>
+      </div>
+      <div class="finding">
+        <h3><span class="code-tag">F3</span> Chrome's own tab groups are a free, strong signal.</h3>
+        <p>Each tab object already carries <code>groupId</code>. If the user hand-grouped tabs in Chrome, that is the best topic label you can get. Reading the group's name needs only the small <code>tabGroups</code> permission. Treat a user-made group as a fixed topic before running any automatic grouping.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">Options</div>
+      <h2>Turning the text into topics</h2>
+      <p>Ordered from cheapest to smartest. Tab Out promises "100% local, no data sent anywhere" in both README and AGENTS.md, so that column decides more than quality does.</p>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Option</th><th>How it works</th><th>Cost</th><th>Quality</th><th>100% local</th></tr></thead>
+        <tbody>
+          <tr class="rec">
+            <td class="k"><span class="code-tag sage">O1</span>Keyword rules</td>
+            <td><code>LOCAL_TOPIC_RULES</code> in <code>config.local.js</code>: a topic name plus keywords matched against title and path. Same pattern as the existing <code>LOCAL_CUSTOM_GROUPS</code>.</td>
+            <td>Zero. Runs in the grouping loop.</td>
+            <td>Only knows topics you wrote down.</td>
+            <td><span class="pill yes">Yes</span></td>
+          </tr>
+          <tr class="rec">
+            <td class="k"><span class="code-tag sage">O2</span>Local text clustering</td>
+            <td>Tokenise title and path, weight words by TF-IDF (rare words count more), cluster tabs whose word sets overlap, label each cluster by its top 2 or 3 words.</td>
+            <td>Under 10 ms for 100 tabs. No library.</td>
+            <td>Finds new topics. Labels read like "react hooks state".</td>
+            <td><span class="pill yes">Yes</span></td>
+          </tr>
+          <tr>
+            <td class="k"><span class="code-tag">O3</span>Local embedding model</td>
+            <td>Load a small sentence model in the browser (transformers.js, about 23 MB once), embed each title, cluster by cosine similarity.</td>
+            <td>One-time download, then about 100 ms.</td>
+            <td>Groups "MiniLM tutorial" with "sentence embeddings", which O2 misses.</td>
+            <td><span class="pill yes">Yes</span></td>
+          </tr>
+          <tr>
+            <td class="k"><span class="code-tag">O4</span>Cloud LLM</td>
+            <td>Send titles to Claude, get topic labels back.</td>
+            <td>API key, network, latency.</td>
+            <td>Best labels.</td>
+            <td><span class="pill no">No</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">Worked example</div>
+      <h2>Eight open tabs, grouped by O1 and O2</h2>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Cleaned title</th><th>Path tokens</th><th>Topic</th><th>Assigned by</th></tr></thead>
+        <tbody>
+          <tr><td>Attention Is All You Need</td><td><code>abs 1706.03762</code></td><td>Transformers</td><td><span class="pill mid">O1 rule "transformers"</span></td></tr>
+          <tr><td>How Transformers Work</td><td><code>watch</code></td><td>Transformers</td><td><span class="pill mid">O1 rule "transformers"</span></td></tr>
+          <tr><td>Illustrated Transformer</td><td><code>illustrated-transformer</code></td><td>Transformers</td><td><span class="pill mid">O1 rule "transformers"</span></td></tr>
+          <tr><td>zarazhangrui/tab-out: Keep tabs on your tabs</td><td><code>zarazhangrui tab-out</code></td><td>tab-out chrome extension</td><td><span class="pill yes">O2 cluster</span></td></tr>
+          <tr><td>chrome.tabs API reference</td><td><code>docs extensions reference api tabs</code></td><td>tab-out chrome extension</td><td><span class="pill yes">O2 cluster</span></td></tr>
+          <tr><td>Manifest V3 migration checklist</td><td><code>docs extensions develop migrate</code></td><td>tab-out chrome extension</td><td><span class="pill yes">O2 cluster</span></td></tr>
+          <tr><td>Re: Week 6 case assignment</td><td><code>inbox</code></td><td>(no topic, stays in Gmail domain card)</td><td><span class="pill no">Unassigned</span></td></tr>
+          <tr><td>Sign in</td><td><code>login</code></td><td>(no topic, stays in domain card)</td><td><span class="pill no">Unassigned</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Tabs that no rule and no cluster claims keep their normal domain card. The topic view only lifts out what it is confident about.</p>
+  </section>
+
+  <section>
+    <div class="decision">
+      <h2><span class="code-tag sage">D1</span>Recommendation</h2>
+      <ol>
+        <li>Build the topic view on cleaned title plus URL path tokens (F1, F2). No new content permissions.</li>
+        <li>Honour Chrome tab groups first (F3). Add the <code>tabGroups</code> permission to read group names.</li>
+        <li>Classify with O1 keyword rules from <code>config.local.js</code>, then fall back to O2 clustering for the rest.</li>
+        <li>Cache each URL's topic in <code>chrome.storage.local</code> so a re-render costs nothing.</li>
+        <li>Keep O3 as a later upgrade behind the same classify interface. Skip O4 unless it becomes an explicit opt-in that changes the privacy story.</li>
+      </ol>
+      <p>This fits the code as it stands. Custom groups already live in <code>config.local.js</code>, and the domain grouping loop in <code>app.js</code> is the natural place to add a second "by topic" mode.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="plain">
+      <h2>In plain terms</h2>
+      <p>Chrome already tells Tab Out the title and web address of every open tab, instantly and for free. Reading anything more from inside each page is slow, needs scary permissions, and does not work on tabs that are asleep. So the best thing to sort tabs by topic is the tab title, cleaned up, plus the words in the address.</p>
+      <p>On YouTube that title is the video name. On Gmail it is the email subject. On Google Docs it is the document name. If you already made tab groups in Chrome yourself, Tab Out should respect those first.</p>
+      <p>For the sorting itself, start with two simple tools that run inside your browser. The first is a short list of topic keywords you write in your personal config file. The second is a small word-overlap routine that groups the rest and names each group by its most common words. A smarter local AI model can be added later. Sending titles to a cloud AI would give the nicest labels, but it would break the promise that Tab Out never sends your data anywhere.</p>
+    </div>
+  </section>
+
+  <div class="foot">Source: <code>extension/app.js</code> (fetchOpenTabs, stripTitleNoise, smartTitle, cleanTitle, the domain grouping loop) and <code>extension/manifest.json</code> (permissions: tabs, activeTab, storage). Status (26 Sep 2026): implemented as O1 + O2 in <code>extension/topics.js</code> and <code>extension/grouping.js</code>, with Chrome tab groups honoured first (F3). O3 slots into the <code>vectorize</code> option of <code>classify</code>. One change from the assessment: plain word overlap replaced TF-IDF weighting, because on 6 to 14 short titles the rare-word weighting pushed related pairs below accidental ones.</div>
+</div>
+
+</body>
+</html>

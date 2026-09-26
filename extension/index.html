@@ -58,6 +58,10 @@
     <div class="active-section" id="openTabsSection" style="display:none">
       <div class="section-header">
         <h2 id="openTabsSectionTitle">Right now</h2>
+        <div class="view-toggle" id="groupViewToggle" role="group" aria-label="Group tabs by">
+          <button class="action-btn primary" data-action="set-group-view" data-view="domain" aria-pressed="true">By domain</button>
+          <button class="action-btn" data-action="set-group-view" data-view="topic" aria-pressed="false">By topic</button>
+        </div>
         <div class="section-line"></div>
         <div class="section-count" id="openTabsSectionCount"></div>
       </div>
@@ -128,6 +132,12 @@
 <!-- Personal config (gitignored) — defines LOCAL_LANDING_PAGE_PATTERNS etc. -->
 <!-- If the file doesn't exist, that's fine — app.js uses sensible defaults. -->
 <script src="config.local.js" onerror="/* no personal config, that's fine */"></script>
+
+<!-- Topic grouping: word lists, classifier, its self-test, then the two grouping views -->
+<script src="topics-stopwords.js"></script>
+<script src="topics.js"></script>
+<script src="topics-selftest.js"></script>
+<script src="grouping.js"></script>
 
 <!-- Main dashboard logic — loads last so the DOM is ready -->
 <script src="app.js"></script>

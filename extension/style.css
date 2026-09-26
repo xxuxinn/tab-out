@@ -216,6 +216,29 @@ header {
   white-space: nowrap;
 }
 
+/* ---- Domain / topic view toggle (segmented control built from .action-btn) ---- */
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--warm-gray);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.view-toggle .action-btn {
+  border: 0;
+  border-radius: 0;
+  padding: 3px 10px;
+}
+
+.view-toggle .action-btn + .action-btn {
+  border-left: 1px solid var(--warm-gray);
+}
+
+.view-toggle .action-btn.primary:hover {
+  color: var(--paper);
+}
+
 /* ---- Mission Cards ---- */
 .missions {
   columns: 280px;

@@ -7,10 +7,13 @@
 
    What this file does:
    1. Reads open browser tabs directly via chrome.tabs.query()
-   2. Groups tabs by domain with a landing pages category
-   3. Renders domain cards, banners, and stats
-   4. Handles all user actions (close tabs, save for later, focus tab)
-   5. Stores "Saved for Later" tabs in chrome.storage.local (no server)
+   2. Groups tabs by domain (grouping.js) or by topic (topics.js +
+      grouping.js), with a landing pages category in both views
+   3. Renders group cards, banners, and stats
+   4. Handles all user actions (close tabs, save for later, focus tab,
+      switch view)
+   5. Stores "Saved for Later" tabs, the view preference and the topic
+      cache in chrome.storage.local (no server)
    ================================================================ */
 
 'use strict';
@@ -25,6 +28,9 @@
 
 // All open tabs — populated by fetchOpenTabs()
 let openTabs = [];
+
+// chrome.tabGroups.TAB_GROUP_ID_NONE — the groupId of a tab outside any native group
+const TAB_GROUP_ID_NONE = -1;
 
 /**
  * fetchOpenTabs()
@@ -45,6 +51,8 @@ async function fetchOpenTabs() {
       title:    t.title,
       windowId: t.windowId,
       active:   t.active,
+      // Chrome tab group id (-1 when the tab is not in a native group)
+      groupId:  typeof t.groupId === 'number' ? t.groupId : TAB_GROUP_ID_NONE,
       // Flag Tab Out's own pages so we can detect duplicate new tabs
       isTabOut: t.url === newtabUrl || t.url === 'chrome://newtab/',
     }));
@@ -106,6 +114,27 @@ async function closeTabsExact(urls) {
   const allTabs = await chrome.tabs.query({});
   const toClose = allTabs.filter(t => urlSet.has(t.url)).map(t => t.id);
   if (toClose.length > 0) await chrome.tabs.remove(toClose);
+  await fetchOpenTabs();
+}
+
+/**
+ * closeTabsByIds(ids)
+ *
+ * Closes exactly these tabs. Used for topic cards, whose tabs span many
+ * hostnames and may share URLs with tabs in other cards, so neither
+ * hostname nor URL matching is safe there. Ids that vanished since the
+ * page rendered are skipped.
+ */
+async function closeTabsByIds(ids) {
+  if (!ids || ids.length === 0) return;
+  try {
+    const live    = new Set((await chrome.tabs.query({})).map(t => t.id));
+    const toClose = ids.filter(id => live.has(id));
+    if (toClose.length > 0) await chrome.tabs.remove(toClose);
+  } catch (err) {
+    console.warn('[tab-out] closeTabsByIds failed:', err);
+    showToast('Could not close those tabs');
+  }
   await fetchOpenTabs();
 }
 
@@ -281,6 +310,86 @@ async function dismissSavedTab(id) {
     tab.dismissed = true;
     await chrome.storage.local.set({ deferred });
   }
+}
+
+
+/* ----------------------------------------------------------------
+   VIEW PREFERENCE + TOPIC CACHE — chrome.storage.local
+
+   "groupView":  'domain' | 'topic'   which grid the user last chose
+   "topicCache": { [url]: { title, key, label, ts } }
+                 last topic label per URL, so cards keep their names
+                 between renders; pruned to open tabs, 7-day TTL
+   ---------------------------------------------------------------- */
+
+const STORAGE_KEYS = Object.freeze({ GROUP_VIEW: 'groupView', TOPIC_CACHE: 'topicCache' });
+
+async function getGroupView() {
+  const modes = Object.values(TabOutGrouping.VIEW_MODES);
+  try {
+    const { groupView } = await chrome.storage.local.get(STORAGE_KEYS.GROUP_VIEW);
+    return modes.includes(groupView) ? groupView : TabOutGrouping.VIEW_MODES.DOMAIN;
+  } catch (err) {
+    console.warn('[tab-out] groupView read failed:', err);
+    return TabOutGrouping.VIEW_MODES.DOMAIN;
+  }
+}
+
+async function setGroupView(view) {
+  try {
+    await chrome.storage.local.set({ [STORAGE_KEYS.GROUP_VIEW]: view });
+  } catch (err) {
+    console.warn('[tab-out] groupView write failed:', err);
+  }
+}
+
+async function loadTopicCache() {
+  try {
+    const { topicCache } = await chrome.storage.local.get(STORAGE_KEYS.TOPIC_CACHE);
+    return topicCache && typeof topicCache === 'object' ? topicCache : {};
+  } catch (err) {
+    console.warn('[tab-out] topicCache read failed:', err);
+    return {};
+  }
+}
+
+/**
+ * saveTopicCache(prev, update, openUrls, now)
+ * Merges the new labels over the old cache, drops entries for tabs that are
+ * no longer open or older than the TTL, and caps the size (oldest first).
+ */
+async function saveTopicCache(prev, update, openUrls, now) {
+  const { CACHE_TTL_MS, CACHE_MAX_ENTRIES } = TabOutTopics.TOPIC_CONFIG;
+  const open   = new Set(openUrls);
+  const merged = { ...prev, ...update };
+  const kept   = Object.entries(merged)
+    .filter(([url, e]) => open.has(url) && e && typeof e.ts === 'number' && (now - e.ts) <= CACHE_TTL_MS)
+    .sort(([, a], [, b]) => b.ts - a.ts)
+    .slice(0, CACHE_MAX_ENTRIES);
+  try {
+    await chrome.storage.local.set({ [STORAGE_KEYS.TOPIC_CACHE]: Object.fromEntries(kept) });
+  } catch (err) {
+    console.warn('[tab-out] topicCache write failed:', err);
+  }
+}
+
+/**
+ * fetchNativeGroupTitles(tabs) -> { [groupId]: { title } }
+ * Reads the names of Chrome tab groups the open tabs belong to.
+ * Needs the "tabGroups" permission; without it every group is unnamed.
+ */
+async function fetchNativeGroupTitles(tabs) {
+  if (typeof chrome.tabGroups === 'undefined') return {};
+  const ids = [...new Set(tabs.map(t => t.groupId).filter(id => id !== TAB_GROUP_ID_NONE))];
+  const entries = await Promise.all(ids.map(async id => {
+    try {
+      const g = await chrome.tabGroups.get(id);
+      return [id, { title: g.title || '' }];
+    } catch {
+      return [id, { title: '' }]; // group closed between query and lookup
+    }
+  }));
+  return Object.fromEntries(entries);
 }
 
 
@@ -803,7 +912,7 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
 function renderDomainCard(group) {
   const tabs      = group.tabs || [];
   const tabCount  = tabs.length;
-  const isLanding = group.domain === '__landing-pages__';
+  const isLanding = group.domain === TabOutGrouping.LANDING_KEY;
   const stableId  = 'domain-' + group.domain.replace(/[^a-z0-9]/g, '-');
 
   // Count duplicates (exact URL match)
@@ -835,7 +944,7 @@ function renderDomainCard(group) {
   const extraCount  = uniqueTabs.length - visibleTabs.length;
 
   const pageChips = visibleTabs.map(tab => {
-    let label = cleanTitle(smartTitle(stripTitleNoise(tab.title || ''), tab.url), group.domain);
+    let label = cleanTitle(smartTitle(stripTitleNoise(tab.title || ''), tab.url), TabOutGrouping.hostnameOf(tab.url));
     // For localhost tabs, prepend port number so you can tell projects apart
     try {
       const parsed = new URL(tab.url);
@@ -1026,136 +1135,9 @@ async function renderStaticDashboard() {
   if (greetingEl) greetingEl.textContent = getGreeting();
   if (dateEl)     dateEl.textContent     = getDateDisplay();
 
-  // --- Fetch tabs ---
+  // --- Fetch tabs and render the open-tabs grid in the remembered view ---
   await fetchOpenTabs();
-  const realTabs = getRealTabs();
-
-  // --- Group tabs by domain ---
-  // Landing pages (Gmail inbox, Twitter home, etc.) get their own special group
-  // so they can be closed together without affecting content tabs on the same domain.
-  const LANDING_PAGE_PATTERNS = [
-    { hostname: 'mail.google.com', test: (p, h) =>
-        !h.includes('#inbox/') && !h.includes('#sent/') && !h.includes('#search/') },
-    { hostname: 'x.com',               pathExact: ['/home'] },
-    { hostname: 'www.linkedin.com',    pathExact: ['/'] },
-    { hostname: 'github.com',          pathExact: ['/'] },
-    { hostname: 'www.youtube.com',     pathExact: ['/'] },
-    // Merge personal patterns from config.local.js (if it exists)
-    ...(typeof LOCAL_LANDING_PAGE_PATTERNS !== 'undefined' ? LOCAL_LANDING_PAGE_PATTERNS : []),
-  ];
-
-  function isLandingPage(url) {
-    try {
-      const parsed = new URL(url);
-      return LANDING_PAGE_PATTERNS.some(p => {
-        // Support both exact hostname and suffix matching (for wildcard subdomains)
-        const hostnameMatch = p.hostname
-          ? parsed.hostname === p.hostname
-          : p.hostnameEndsWith
-            ? parsed.hostname.endsWith(p.hostnameEndsWith)
-            : false;
-        if (!hostnameMatch) return false;
-        if (p.test)       return p.test(parsed.pathname, url);
-        if (p.pathPrefix) return parsed.pathname.startsWith(p.pathPrefix);
-        if (p.pathExact)  return p.pathExact.includes(parsed.pathname);
-        return parsed.pathname === '/';
-      });
-    } catch { return false; }
-  }
-
-  domainGroups = [];
-  const groupMap    = {};
-  const landingTabs = [];
-
-  // Custom group rules from config.local.js (if any)
-  const customGroups = typeof LOCAL_CUSTOM_GROUPS !== 'undefined' ? LOCAL_CUSTOM_GROUPS : [];
-
-  // Check if a URL matches a custom group rule; returns the rule or null
-  function matchCustomGroup(url) {
-    try {
-      const parsed = new URL(url);
-      return customGroups.find(r => {
-        const hostMatch = r.hostname
-          ? parsed.hostname === r.hostname
-          : r.hostnameEndsWith
-            ? parsed.hostname.endsWith(r.hostnameEndsWith)
-            : false;
-        if (!hostMatch) return false;
-        if (r.pathPrefix) return parsed.pathname.startsWith(r.pathPrefix);
-        return true; // hostname matched, no path filter
-      }) || null;
-    } catch { return null; }
-  }
-
-  for (const tab of realTabs) {
-    try {
-      if (isLandingPage(tab.url)) {
-        landingTabs.push(tab);
-        continue;
-      }
-
-      // Check custom group rules first (e.g. merge subdomains, split by path)
-      const customRule = matchCustomGroup(tab.url);
-      if (customRule) {
-        const key = customRule.groupKey;
-        if (!groupMap[key]) groupMap[key] = { domain: key, label: customRule.groupLabel, tabs: [] };
-        groupMap[key].tabs.push(tab);
-        continue;
-      }
-
-      let hostname;
-      if (tab.url && tab.url.startsWith('file://')) {
-        hostname = 'local-files';
-      } else {
-        hostname = new URL(tab.url).hostname;
-      }
-      if (!hostname) continue;
-
-      if (!groupMap[hostname]) groupMap[hostname] = { domain: hostname, tabs: [] };
-      groupMap[hostname].tabs.push(tab);
-    } catch {
-      // Skip malformed URLs
-    }
-  }
-
-  if (landingTabs.length > 0) {
-    groupMap['__landing-pages__'] = { domain: '__landing-pages__', tabs: landingTabs };
-  }
-
-  // Sort: landing pages first, then domains from landing page sites, then by tab count
-  // Collect exact hostnames and suffix patterns for priority sorting
-  const landingHostnames = new Set(LANDING_PAGE_PATTERNS.map(p => p.hostname).filter(Boolean));
-  const landingSuffixes = LANDING_PAGE_PATTERNS.map(p => p.hostnameEndsWith).filter(Boolean);
-  function isLandingDomain(domain) {
-    if (landingHostnames.has(domain)) return true;
-    return landingSuffixes.some(s => domain.endsWith(s));
-  }
-  domainGroups = Object.values(groupMap).sort((a, b) => {
-    const aIsLanding = a.domain === '__landing-pages__';
-    const bIsLanding = b.domain === '__landing-pages__';
-    if (aIsLanding !== bIsLanding) return aIsLanding ? -1 : 1;
-
-    const aIsPriority = isLandingDomain(a.domain);
-    const bIsPriority = isLandingDomain(b.domain);
-    if (aIsPriority !== bIsPriority) return aIsPriority ? -1 : 1;
-
-    return b.tabs.length - a.tabs.length;
-  });
-
-  // --- Render domain cards ---
-  const openTabsSection      = document.getElementById('openTabsSection');
-  const openTabsMissionsEl   = document.getElementById('openTabsMissions');
-  const openTabsSectionCount = document.getElementById('openTabsSectionCount');
-  const openTabsSectionTitle = document.getElementById('openTabsSectionTitle');
-
-  if (domainGroups.length > 0 && openTabsSection) {
-    if (openTabsSectionTitle) openTabsSectionTitle.textContent = 'Open tabs';
-    openTabsSectionCount.innerHTML = `${domainGroups.length} domain${domainGroups.length !== 1 ? 's' : ''} &nbsp;&middot;&nbsp; <button class="action-btn close-tabs" data-action="close-all-open-tabs" style="font-size:11px;padding:3px 10px;">${ICONS.close} Close all ${realTabs.length} tabs</button>`;
-    openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
-    openTabsSection.style.display = 'block';
-  } else if (openTabsSection) {
-    openTabsSection.style.display = 'none';
-  }
+  await renderOpenTabsSection(await getGroupView());
 
   // --- Footer stats ---
   const statTabs = document.getElementById('statTabs');
@@ -1166,6 +1148,83 @@ async function renderStaticDashboard() {
 
   // --- Render "Saved for Later" column ---
   await renderDeferredColumn();
+}
+
+/**
+ * renderOpenTabsSection(view)
+ *
+ * Builds the groups for the chosen view ('domain' | 'topic') from the
+ * already-fetched openTabs, stores them in domainGroups for the click
+ * handlers, and paints the section header and cards. Safe to call again
+ * after a toggle click; no page reload needed.
+ */
+async function renderOpenTabsSection(view) {
+  const realTabs = getRealTabs();
+  const { groups, topicCount } = view === TabOutGrouping.VIEW_MODES.TOPIC
+    ? await buildTopicGroups(realTabs)
+    : { groups: TabOutGrouping.buildDomainGroups(realTabs), topicCount: 0 };
+  domainGroups = groups;
+
+  const section  = document.getElementById('openTabsSection');
+  const missions = document.getElementById('openTabsMissions');
+  const countEl  = document.getElementById('openTabsSectionCount');
+  const titleEl  = document.getElementById('openTabsSectionTitle');
+  if (!section || !missions || !countEl) return;
+
+  syncViewToggle(view);
+
+  if (groups.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  const plural = (n, word) => `${n} ${word}${n !== 1 ? 's' : ''}`;
+  const domainCount = groups.filter(g => g.kind === TabOutGrouping.GROUP_KINDS.DOMAIN
+                                       || g.kind === TabOutGrouping.GROUP_KINDS.CUSTOM).length;
+  const summary = view === TabOutGrouping.VIEW_MODES.TOPIC
+    ? `${plural(topicCount, 'topic')} &nbsp;&middot;&nbsp; ${plural(domainCount, 'domain')}`
+    : plural(groups.length, 'domain');
+
+  if (titleEl) titleEl.textContent = 'Open tabs';
+  countEl.innerHTML = `${summary} &nbsp;&middot;&nbsp; <button class="action-btn close-tabs" data-action="close-all-open-tabs" style="font-size:11px;padding:3px 10px;">${ICONS.close} Close all ${realTabs.length} tabs</button>`;
+  missions.innerHTML = groups.map(g => renderDomainCard(g)).join('');
+  section.style.display = 'block';
+}
+
+/**
+ * buildTopicGroups(realTabs) -> { groups, topicCount }
+ *
+ * Gathers everything the pure classifier needs (rules from config.local.js,
+ * native tab group names, the label cache), runs it, and saves the cache.
+ * Any failure falls back to the domain view with a toast, so the page
+ * never goes blank.
+ */
+async function buildTopicGroups(realTabs) {
+  try {
+    const now = Date.now();
+    const ctx = {
+      rules:        typeof LOCAL_TOPIC_RULES !== 'undefined' ? LOCAL_TOPIC_RULES : [],
+      nativeGroups: await fetchNativeGroupTitles(realTabs),
+      cache:        await loadTopicCache(),
+      now,
+    };
+    const { groups, topicCount, cacheUpdate } = TabOutGrouping.buildTopicView(realTabs, ctx);
+    await saveTopicCache(ctx.cache, cacheUpdate, realTabs.map(t => t.url), now);
+    return { groups, topicCount };
+  } catch (err) {
+    console.warn('[tab-out] topic view failed, showing domains:', err);
+    showToast('Topic view unavailable, showing domains');
+    return { groups: TabOutGrouping.buildDomainGroups(realTabs), topicCount: 0 };
+  }
+}
+
+/** syncViewToggle(view): marks the active "By domain / By topic" button */
+function syncViewToggle(view) {
+  document.querySelectorAll('#groupViewToggle [data-view]').forEach(btn => {
+    const active = btn.dataset.view === view;
+    btn.classList.toggle('primary', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
 }
 
 async function renderDashboard() {
@@ -1348,12 +1407,13 @@ document.addEventListener('click', async (e) => {
     });
     if (!group) return;
 
-    const urls      = group.tabs.map(t => t.url);
-    // Landing pages and custom groups (whose domain key isn't a real hostname)
-    // must use exact URL matching to avoid closing unrelated tabs
-    const useExact  = group.domain === '__landing-pages__' || !!group.label;
-
-    if (useExact) {
+    const urls  = group.tabs.map(t => t.url);
+    const KINDS = TabOutGrouping.GROUP_KINDS;
+    if (group.kind === KINDS.NATIVE || group.kind === KINDS.RULE || group.kind === KINDS.TOPIC) {
+      // Topic cards mix hostnames and may share URLs with other cards: close by tab id only
+      await closeTabsByIds(group.tabs.map(t => t.id));
+    } else if (group.kind === KINDS.LANDING || group.kind === KINDS.CUSTOM) {
+      // Landing pages and custom groups (whose key isn't a real hostname) match exact URLs
       await closeTabsExact(urls);
     } else {
       await closeTabsByUrls(urls);
@@ -1365,10 +1425,9 @@ document.addEventListener('click', async (e) => {
     }
 
     // Remove from in-memory groups
-    const idx = domainGroups.indexOf(group);
-    if (idx !== -1) domainGroups.splice(idx, 1);
+    domainGroups = domainGroups.filter(g => g !== group);
 
-    const groupLabel = group.domain === '__landing-pages__' ? 'Homepages' : (group.label || friendlyDomain(group.domain));
+    const groupLabel = group.domain === TabOutGrouping.LANDING_KEY ? 'Homepages' : (group.label || friendlyDomain(group.domain));
     showToast(`Closed ${urls.length} tab${urls.length !== 1 ? 's' : ''} from ${groupLabel}`);
 
     const statTabs = document.getElementById('statTabs');
@@ -1409,6 +1468,16 @@ document.addEventListener('click', async (e) => {
     }
 
     showToast('Closed duplicates, kept one copy each');
+    return;
+  }
+
+  // ---- Switch between "By domain" and "By topic" ----
+  if (action === 'set-group-view') {
+    const view = actionEl.dataset.view;
+    if (!Object.values(TabOutGrouping.VIEW_MODES).includes(view)) return;
+    await setGroupView(view);
+    await fetchOpenTabs();             // pick up tabs closed since the page loaded
+    await renderOpenTabsSection(view);
     return;
   }
 
