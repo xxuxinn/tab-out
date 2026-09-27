@@ -1,10 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Tab Out",
-  "version": "1.0.0",
-  "description": "Keep tabs on your tabs. New tab page that groups your open tabs by domain and lets you close them with style.",
+  "version": "1.1.0",
+  "description": "Keep tabs on your tabs. New tab page that groups your open tabs by domain or by topic, on-device, and lets you close them with style.",
   "permissions": ["tabs", "tabGroups", "activeTab", "storage"],
   "chrome_url_overrides": { "newtab": "index.html" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
   "background": { "service_worker": "background.js" },
   "action": {
     "default_title": "Tab Out",

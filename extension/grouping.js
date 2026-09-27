@@ -142,10 +142,15 @@ function cleanedTitleFor(tab) {
   return cleanTitle(smartTitle(stripTitleNoise(tab.title || ''), tab.url), hostnameOf(tab.url));
 }
 
+/** topicTitles(realTabs) -> string[]   the cleaned titles classify() will see (embeddings are keyed by these) */
+function topicTitles(realTabs) {
+  return [...new Set(realTabs.filter(t => !isLandingPage(t.url)).map(cleanedTitleFor))];
+}
+
 /**
- * buildTopicView(realTabs, ctx) -> { groups, topicCount, cacheUpdate }
+ * buildTopicView(realTabs, ctx) -> { groups, topicCount, cacheUpdate, semantic }
  * ctx is passed straight to TabOutTopics.classify:
- *   { rules, nativeGroups, cache, now }
+ *   { rules, nativeGroups, cache, now, embeddings? }
  */
 function buildTopicView(realTabs, ctx) {
   if (typeof TabOutTopics === 'undefined') {
@@ -154,7 +159,7 @@ function buildTopicView(realTabs, ctx) {
   const landingTabs = realTabs.filter(t => isLandingPage(t.url));
   const contentTabs = realTabs.filter(t => !isLandingPage(t.url)).map(t => ({ ...t, text: cleanedTitleFor(t) }));
 
-  const { groups: topicGroups, leftoverTabs, cacheUpdate } = TabOutTopics.classify(contentTabs, ctx);
+  const { groups: topicGroups, leftoverTabs, cacheUpdate, semantic } = TabOutTopics.classify(contentTabs, ctx);
 
   // Leftovers go through the ordinary domain grouping so custom rules and file:// behave as usual
   const domainPart = buildDomainGroups([...landingTabs, ...leftoverTabs]);
@@ -165,10 +170,11 @@ function buildTopicView(realTabs, ctx) {
     groups:     [...landing, ...topicGroups, ...rest],
     topicCount: topicGroups.length,
     cacheUpdate,
+    semantic,
   });
 }
 
 window.TabOutGrouping = Object.freeze({
   VIEW_MODES, GROUP_KINDS, LANDING_KEY,
-  buildDomainGroups, buildTopicView, isLandingPage, hostnameOf,
+  buildDomainGroups, buildTopicView, topicTitles, isLandingPage, hostnameOf,
 });

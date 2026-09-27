@@ -356,7 +356,7 @@
     </div>
   </section>
 
-  <div class="foot">Source: <code>extension/app.js</code> (fetchOpenTabs, stripTitleNoise, smartTitle, cleanTitle, the domain grouping loop) and <code>extension/manifest.json</code> (permissions: tabs, activeTab, storage). Status (26 Sep 2026): implemented as O1 + O2 in <code>extension/topics.js</code> and <code>extension/grouping.js</code>, with Chrome tab groups honoured first (F3). O3 slots into the <code>vectorize</code> option of <code>classify</code>. One change from the assessment: plain word overlap replaced TF-IDF weighting, because on 6 to 14 short titles the rare-word weighting pushed related pairs below accidental ones.</div>
+  <div class="foot">Source: <code>extension/app.js</code> (fetchOpenTabs, stripTitleNoise, smartTitle, cleanTitle, the domain grouping loop) and <code>extension/manifest.json</code> (permissions: tabs, activeTab, storage). Status (26 Sep 2026): implemented as O1 + O2 in <code>extension/topics.js</code> and <code>extension/grouping.js</code>, with Chrome tab groups honoured first (F3). Update (27 Sep 2026): O3 is implemented as an in-browser multilingual model (<code>paraphrase-multilingual-MiniLM-L12-v2</code>, 118 MB, via transformers.js; <code>extension/embeddings.js</code> + <code>embed-worker.js</code>), passed to <code>classify</code> as <code>ctx.embeddings</code> and installed by <code>scripts/setup-model.sh</code>. Word overlap stays as the fallback. One change from the assessment: plain word overlap replaced TF-IDF weighting, because on 6 to 14 short titles the rare-word weighting pushed related pairs below accidental ones.</div>
 </div>
 
 </body>

@@ -216,6 +216,13 @@ header {
   white-space: nowrap;
 }
 
+/* "semantic" / "refining…" / "words only" after the topic count; the title attribute explains it */
+.similarity-badge {
+  font-style: italic;
+  cursor: help;
+  border-bottom: 1px dotted var(--muted);
+}
+
 /* ---- Domain / topic view toggle (segmented control built from .action-btn) ---- */
 .view-toggle {
   display: inline-flex;

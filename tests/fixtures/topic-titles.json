@@ -1,0 +1,190 @@
+{
+ "_comment": "Tab titles with known topics (English + Chinese, cross-language pairs, synonym pairs with no shared word, unrelated tabs). Used by scripts/bench-embeddings.mjs and tests/semantic.e2e.cjs. Row: [topic or null, title, url].",
+ "rows": [
+  [
+   "agents",
+   "Agent memory: how LLM agents remember across sessions",
+   "https://blog.example.com/agent-memory"
+  ],
+  [
+   "agents",
+   "Letta docs – stateful agents",
+   "https://docs.letta.com/stateful-agents"
+  ],
+  [
+   "agents",
+   "长期记忆：让大模型智能体记住上下文",
+   "https://zhuanlan.zhihu.com/p/123456"
+  ],
+  [
+   "agents",
+   "MemGPT: Towards LLMs as Operating Systems",
+   "https://arxiv.org/abs/2310.08560"
+  ],
+  [
+   "embed",
+   "MiniLM tutorial",
+   "https://www.sbert.net/docs/minilm"
+  ],
+  [
+   "embed",
+   "Sentence embeddings with SBERT",
+   "https://www.sbert.net/examples/applications"
+  ],
+  [
+   "embed",
+   "向量检索入门：文本嵌入与相似度",
+   "https://www.cnblogs.com/post/998877"
+  ],
+  [
+   "embed",
+   "Choosing an embedding model for semantic search",
+   "https://huggingface.co/blog/mteb"
+  ],
+  [
+   "attn",
+   "Attention Is All You Need",
+   "https://arxiv.org/abs/1706.03762"
+  ],
+  [
+   "attn",
+   "The Illustrated Transformer",
+   "https://jalammar.github.io/illustrated-transformer/"
+  ],
+  [
+   "attn",
+   "注意力机制详解",
+   "https://zhuanlan.zhihu.com/p/654321"
+  ],
+  [
+   "attn",
+   "How self-attention works, explained visually",
+   "https://www.youtube.com/watch?v=abc123DEF45"
+  ],
+  [
+   "cook",
+   "Classic buttermilk pancakes",
+   "https://www.seriouseats.com/buttermilk-pancakes"
+  ],
+  [
+   "cook",
+   "Fluffy Japanese soufflé pancakes",
+   "https://www.justonecookbook.com/souffle-pancake/"
+  ],
+  [
+   "cook",
+   "松饼的做法 家常简单版",
+   "https://www.xiachufang.com/recipe/1001/"
+  ],
+  [
+   "cook",
+   "Best crêpe batter ratio",
+   "https://www.bonappetit.com/crepe-batter"
+  ],
+  [
+   "japan",
+   "Kyoto 3-day itinerary",
+   "https://www.japan-guide.com/kyoto-itinerary"
+  ],
+  [
+   "japan",
+   "JR Pass: is it worth it in 2026?",
+   "https://www.jrpass.com/worth-it"
+  ],
+  [
+   "japan",
+   "京都红叶最佳观赏地点",
+   "https://www.mafengwo.cn/travel/kyoto"
+  ],
+  [
+   "japan",
+   "Tokyo to Kyoto by Shinkansen: tickets and seats",
+   "https://www.japan-guide.com/shinkansen"
+  ],
+  [
+   "teach",
+   "MBA strategy syllabus – week 4",
+   "https://learn.polyu.edu.hk/course/strategy"
+  ],
+  [
+   "teach",
+   "Grading rubric for case write-ups",
+   "https://docs.google.com/document/d/1abc/edit"
+  ],
+  [
+   "teach",
+   "课堂参与评分标准",
+   "https://docs.google.com/document/d/2def/edit"
+  ],
+  [
+   "teach",
+   "Blackboard: assignment submissions",
+   "https://learn.polyu.edu.hk/assignments"
+  ],
+  [
+   "macro",
+   "Fed holds interest rates steady",
+   "https://www.reuters.com/markets/fed-rates"
+  ],
+  [
+   "macro",
+   "美联储维持利率不变",
+   "https://www.caixin.com/2026-09-17/fed.html"
+  ],
+  [
+   "macro",
+   "Bond yields climb after inflation report",
+   "https://www.ft.com/content/bond-yields"
+  ],
+  [
+   "macro",
+   "ECB signals rate cut in December",
+   "https://www.bloomberg.com/news/ecb-cut"
+  ],
+  [
+   "run",
+   "Couch to 5K plan",
+   "https://www.nhs.uk/live-well/couch-to-5k/"
+  ],
+  [
+   "run",
+   "Marathon training: long run pacing",
+   "https://www.runnersworld.com/long-run-pacing"
+  ],
+  [
+   "run",
+   "跑步膝盖疼怎么办",
+   "https://www.zhihu.com/question/2468"
+  ],
+  [
+   "run",
+   "Best running shoes for flat feet",
+   "https://www.runnersworld.com/flat-feet-shoes"
+  ],
+  [
+   null,
+   "Invoice #4821 – Acme Ltd",
+   "https://mail.google.com/mail/u/0/#inbox/abc"
+  ],
+  [
+   null,
+   "Weather: Hong Kong this weekend",
+   "https://www.hko.gov.hk/en/wxinfo"
+  ],
+  [
+   null,
+   "Sign in – Google Accounts",
+   "https://accounts.google.com/signin"
+  ],
+  [
+   null,
+   "PolyU campus map",
+   "https://www.polyu.edu.hk/campus-map"
+  ],
+  [
+   null,
+   "Mac Studio M4 Ultra review",
+   "https://www.theverge.com/mac-studio-review"
+  ]
+ ]
+}

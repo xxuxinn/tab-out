@@ -14,6 +14,7 @@ Before doing anything technical, tell the user what they're about to get:
 > - **See all your open tabs at a glance** grouped by domain on a grid
 > - **Homepages group** pulls Gmail, X, LinkedIn, YouTube, GitHub homepages into one card for easy cleanup
 > - **By topic view** regroups the grid by what the pages are about: your Chrome tab groups first, then your own keyword rules, then similar titles clustered automatically, all on-device
+> - **Grouped by meaning, in any language** a small multilingual model runs inside the browser, so an English and a Chinese tab about the same thing share a card
 > - **Close tabs with style** satisfying swoosh sound + confetti burst
 > - **Duplicate detection** flags when you have the same page open twice
 > - **Click any tab title to jump to it** even across different Chrome windows
@@ -33,7 +34,19 @@ cd tab-out
 
 ---
 
-## Step 2 -- Install the Chrome extension
+## Step 2 -- Install the topic model (one time, about 145 MB)
+
+Run this from the repo root. It downloads the in-browser model and its library into `extension/models/` and `extension/vendor/` (gitignored) and verifies checksums. It is safe to run again: a second run downloads nothing.
+
+```bash
+bash scripts/setup-model.sh
+```
+
+If the download fails (for example, no network), carry on. Tab Out still works, and its topic view groups by shared words until the script has run. Tell the user they can run it later and then reload the extension.
+
+---
+
+## Step 3 -- Install the Chrome extension
 
 This is the one step that requires manual action from the user. Make it as easy as possible.
 
@@ -70,7 +83,7 @@ open "chrome://extensions"
 
 ---
 
-## Step 3 -- Show them around
+## Step 4 -- Show them around
 
 Once the extension is loaded:
 
@@ -84,7 +97,7 @@ Once the extension is loaded:
 > 5. **Click "Close all N tabs"** on a group to close the whole thing.
 > 6. **Duplicate tabs** are flagged with an amber "(2x)" badge. Click "Close duplicates" to keep one copy.
 > 7. **Save a tab for later** by clicking the bookmark icon before closing it. Saved tabs appear in the sidebar.
-> 8. **Click "By topic"** in the section header to regroup by what the tabs are about. Your Chrome tab groups show first, then any rules from your personal config, then similar titles clustered together. Tab Out remembers which view you chose.
+> 8. **Click "By topic"** in the section header to regroup by what the tabs are about. Your Chrome tab groups show first, then any rules from your personal config, then tabs with similar meaning clustered together. The header says "semantic" when the on-device model did the grouping. Tab Out remembers which view you chose.
 >
 > That's it! No server to run, no config files required. (Optional: copy `extension/config.local.example.js` to `extension/config.local.js` for personal homepages, custom groups and topic rules.)
 
@@ -94,6 +107,7 @@ Once the extension is loaded:
 
 - Tab Out is a pure Chrome extension. No server, no Node.js, no npm.
 - Saved tabs are stored in `chrome.storage.local` (persists across sessions).
-- 100% local. No data is sent to any external service. Topic grouping runs on tab titles and URL paths inside the extension page; the `tabGroups` permission is used only to read the names of Chrome tab groups.
+- 100% local. No tab title or URL is sent to any external service. Topic grouping runs on tab titles and URL paths inside the extension page; the `tabGroups` permission is used only to read the names of Chrome tab groups. (Two requests that carry no title do leave the page: Google Fonts, and Google's favicon service, which receives each tab's domain.)
+- Semantic topics: `scripts/setup-model.sh` installs `Xenova/paraphrase-multilingual-MiniLM-L12-v2` (int8, 118 MB) and transformers.js 4.3.0, pinned by SHA-256 in `scripts/model-files.sha256`. The model runs in a Web Worker (`extension/embed-worker.js`) with remote model loading switched off, and caches title vectors in IndexedDB. The manifest adds only `'wasm-unsafe-eval'` to the page's content security policy; no new permissions.
 - Personal config is optional: `extension/config.local.example.js` documents `LOCAL_LANDING_PAGE_PATTERNS`, `LOCAL_CUSTOM_GROUPS` and `LOCAL_TOPIC_RULES`; the real `config.local.js` is gitignored.
-- To update: `cd tab-out && git pull`, then reload the extension in `chrome://extensions`.
+- To update: `cd tab-out && git pull && bash scripts/setup-model.sh`, then reload the extension in `chrome://extensions`.

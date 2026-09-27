@@ -9,15 +9,24 @@
    Priority per tab:
      1. native   the tab sits in a Chrome tab group (groupId != -1)
      2. rule     a LOCAL_TOPIC_RULES entry from config.local.js matches
-     3. topic    automatic clustering of similar titles (BM25 + cosine)
+     3. topic    automatic clustering of similar titles
      4. leftover nothing confident; the caller keeps its domain card
 
+   Step 3 measures "similar" in one of two ways:
+     semantic  ctx.embeddings holds a meaning vector for every title
+               (embeddings.js, a multilingual model running in the
+               browser). Titles about the same thing match even with
+               no shared word, across English and Chinese.
+     words     otherwise: word overlap + cosine, as before.
+   Labels always come from shared words; a semantic cluster whose
+   members share no word is named after its most central title.
+
    Public API (window.TabOutTopics):
-     classify(tabs, ctx) -> { groups, leftoverTabs, cacheUpdate }
+     classify(tabs, ctx) -> { groups, leftoverTabs, cacheUpdate, semantic }
      tokenize, vectorize, cosine, cluster, labelFor, matchRule, TOPIC_CONFIG
 
-   `classify` is pure: no chrome.*, no DOM. The `ctx.vectorize`
-   option is the slot where a local embedding model can plug in later.
+   `classify` is pure: no chrome.*, no DOM, synchronous. Embeddings
+   are computed beforehand by the caller and passed in.
 
    The IDF formula, cosine similarity and stopword list follow
    tiny-tfidf (MIT, Kerry Rodden): https://github.com/kerryrodden/tiny-tfidf
@@ -31,6 +40,10 @@ const TOPIC_CONFIG = Object.freeze({
   MIN_DOC_TOKENS:       2,      // fewer distinct tokens -> leftover ("Sign in", bare domains)
   MIN_CLUSTER_SIZE:     2,      // auto clusters only; rule and native groups may hold 1 tab
   SIMILARITY_THRESHOLD: 0.25,   // average-link cosine to merge; titles sharing 2 words score ~0.35, one accidental word ~0.15
+  SEMANTIC_THRESHOLD:   0.40,   // same, on embedding cosine. scripts/bench-embeddings.mjs: at 0.40 all 8 clusters correct (precision 1.0); at 0.36 unrelated tabs start to merge
+  SEMANTIC_LABEL_SHARE: 0.5,    // semantic clusters: a label word must appear in at least half the members, else use the central title
+  MEDOID_LABEL_WORDS:   4,      // central-title label: first N words ...
+  MEDOID_LABEL_CHARS:   28,     // ... capped at this many characters (CJK titles have no spaces)
   MAX_LABEL_TERMS:      3,
   MIN_LABEL_TERM_DOCS:  2,      // a label word must appear in at least 2 members
   IDF_POWER:            0,      // 0 = plain word overlap. With 10-150 short titles, rare-word weighting (IDF) hurt: a word shared by half the tabs is the topic, not noise. Raise toward 1 to bring IDF back.
@@ -226,6 +239,17 @@ function similarityMatrix(vectors) {
   return vectors.map((v, i) => vectors.map((w, j) => (i === j ? 1 : cosine(v, w))));
 }
 
+// Embeddings arrive L2-normalised, so cosine is the plain dot product
+function denseDot(a, b) {
+  let s = 0;
+  for (let k = 0; k < a.length; k++) s += a[k] * b[k];
+  return s;
+}
+
+function denseSimilarityMatrix(embeddings) {
+  return embeddings.map((v, i) => embeddings.map((w, j) => (i === j ? 1 : denseDot(v, w))));
+}
+
 function averageLink(sim, a, b) {
   const total = a.reduce((s, i) => s + b.reduce((t, j) => t + sim[i][j], 0), 0);
   return total / (a.length * b.length);
@@ -242,13 +266,12 @@ function bestPair(sim, clusters) {
   return best;
 }
 
-/** cluster(vectors) -> number[][]   (arrays of doc indices) */
-function cluster(vectors) {
-  const sim = similarityMatrix(vectors);
-  let clusters = vectors.map((_, i) => [i]);
+/** cluster(sim, threshold) -> number[][]   (arrays of doc indices) */
+function cluster(sim, threshold = TOPIC_CONFIG.SIMILARITY_THRESHOLD) {
+  let clusters = sim.map((_, i) => [i]);
   for (;;) {
     const { i, j, score } = bestPair(sim, clusters);
-    if (i === -1 || score < TOPIC_CONFIG.SIMILARITY_THRESHOLD) return clusters;
+    if (i === -1 || score < threshold) return clusters;
     const merged = [...clusters[i], ...clusters[j]];
     clusters = [...clusters.filter((_, k) => k !== i && k !== j), merged];
   }
@@ -270,14 +293,42 @@ function termStats(memberIdx, vectors) {
   return stats;
 }
 
-/** labelFor(memberIdx, vectors) -> { label, key } */
-function labelFor(memberIdx, vectors) {
+// The member with the highest average similarity to the others
+function medoidIndex(memberIdx, sim) {
+  const avg = i => memberIdx.reduce((s, j) => s + (i === j ? 0 : sim[i][j]), 0);
+  return memberIdx.reduce((best, i) => (avg(i) > avg(best) ? i : best), memberIdx[0]);
+}
+
+function shortTitle(text) {
+  const words = String(text).trim().split(/\s+/).slice(0, TOPIC_CONFIG.MEDOID_LABEL_WORDS).join(' ');
+  const max   = TOPIC_CONFIG.MEDOID_LABEL_CHARS;
+  const cut   = words.length > max ? `${words.slice(0, max).trim()}…` : words;
+  return cut.replace(/[\s:：,，\-–—|·]+$/u, '') || 'Topic';
+}
+
+// Semantic clusters: a word shared by only 2 of 6 members would mislabel the card
+function minLabelDocs(memberIdx, semantic) {
+  return semantic
+    ? Math.max(TOPIC_CONFIG.MIN_LABEL_TERM_DOCS, Math.ceil(memberIdx.length * TOPIC_CONFIG.SEMANTIC_LABEL_SHARE))
+    : TOPIC_CONFIG.MIN_LABEL_TERM_DOCS;
+}
+
+/**
+ * labelFor(memberIdx, vectors, opts?) -> { label, key }
+ * opts: { semantic?: boolean, sim?: number[][], docs?: Doc[] }  (semantic needs sim + docs)
+ */
+function labelFor(memberIdx, vectors, opts = {}) {
   const stats  = termStats(memberIdx, vectors);
+  const need   = minLabelDocs(memberIdx, opts.semantic);
   const ranked = [...stats.entries()]
-    .filter(([, s]) => s.docs >= TOPIC_CONFIG.MIN_LABEL_TERM_DOCS)
+    .filter(([, s]) => s.docs >= need)
     .sort(([, a], [, b]) => b.docs - a.docs || b.weight - a.weight)
     .slice(0, TOPIC_CONFIG.MAX_LABEL_TERMS)
     .map(([t]) => t);
+  if (!ranked.length && opts.semantic && opts.sim && opts.docs) {
+    const label = shortTitle(opts.docs[medoidIndex(memberIdx, opts.sim)].text);
+    return { label, key: TOPIC_KEY_PREFIX + slugify(label) };
+  }
   const fallback = [...stats.entries()].sort(([, a], [, b]) => b.weight - a.weight)[0];
   const terms    = ranked.length ? ranked : [fallback ? fallback[0] : 'topic'];
   return {
@@ -376,9 +427,10 @@ function ruleGroupsFrom(ruled) {
 }
 
 function autoGroupsFrom(clusters, docs, vectors, ctx) {
+  const labelOpts = { semantic: ctx.semantic, sim: ctx.sim, docs };
   const groups = clusters.map(memberIdx => {
     const memberDocs = memberIdx.map(i => docs[i]);
-    const named = cachedLabelFor(memberDocs, ctx.cache || {}, ctx.now) || labelFor(memberIdx, vectors);
+    const named = cachedLabelFor(memberDocs, ctx.cache || {}, ctx.now) || labelFor(memberIdx, vectors, labelOpts);
     return Object.freeze({
       domain: named.key,
       label:  named.label,
@@ -401,16 +453,25 @@ function buildCacheUpdate(autoGroups, now) {
    classify — the single boundary the UI calls
    ---------------------------------------------------------------- */
 
+// Semantic only when every clusterable title has a vector: a mixed matrix
+// would compare embedding cosines against word cosines
+function embeddingsFor(docs, embeddings) {
+  if (!embeddings || typeof embeddings.get !== 'function' || docs.length === 0) return null;
+  const list = docs.map(d => embeddings.get(d.text));
+  return list.every(v => v && v.length > 0) ? list : null;
+}
+
 /**
- * classify(tabs, ctx) -> { groups, leftoverTabs, cacheUpdate }
+ * classify(tabs, ctx) -> { groups, leftoverTabs, cacheUpdate, semantic }
  *
  * tabs: content tabs (landing pages removed), each with `text` = cleaned title
- * ctx:  { rules?, nativeGroups?: {[groupId]: {title}}, cache?, now?, vectorize? }
+ * ctx:  { rules?, nativeGroups?: {[groupId]: {title}}, cache?, now?,
+ *         embeddings?: Map<cleanedTitle, Float32Array> (L2-normalised) }
+ * semantic: true when step 3 used the embeddings
  */
 function classify(tabs, ctx = {}) {
-  const now         = typeof ctx.now === 'number' ? ctx.now : Date.now();
-  const rules       = (ctx.rules || []).filter(validateRule);
-  const vectorizeFn = typeof ctx.vectorize === 'function' ? ctx.vectorize : vectorize;
+  const now   = typeof ctx.now === 'number' ? ctx.now : Date.now();
+  const rules = (ctx.rules || []).filter(validateRule);
 
   const docs = (tabs || []).map(tab => {
     const text  = String(tab.text || '');
@@ -428,9 +489,13 @@ function classify(tabs, ctx = {}) {
   const [clusterable, tooShort] = partition(rest2.map(r => r.doc),
                                             d => new Set(d.tokens).size >= TOPIC_CONFIG.MIN_DOC_TOKENS);
 
-  const vectors  = vectorizeFn(clusterable);
-  const clusters = cluster(vectors).filter(c => c.length >= TOPIC_CONFIG.MIN_CLUSTER_SIZE);
-  const autoGroups   = autoGroupsFrom(clusters, clusterable, vectors, { ...ctx, now });
+  const vectors   = vectorize(clusterable);
+  const dense     = embeddingsFor(clusterable, ctx.embeddings);
+  const semantic  = dense !== null;
+  const sim       = semantic ? denseSimilarityMatrix(dense) : similarityMatrix(vectors);
+  const threshold = semantic ? TOPIC_CONFIG.SEMANTIC_THRESHOLD : TOPIC_CONFIG.SIMILARITY_THRESHOLD;
+  const clusters  = cluster(sim, threshold).filter(c => c.length >= TOPIC_CONFIG.MIN_CLUSTER_SIZE);
+  const autoGroups   = autoGroupsFrom(clusters, clusterable, vectors, { ...ctx, now, semantic, sim });
   const clusteredIdx = new Set(clusters.flat());
 
   const leftoverTabs = [
@@ -446,6 +511,7 @@ function classify(tabs, ctx = {}) {
     ],
     leftoverTabs,
     cacheUpdate: buildCacheUpdate(autoGroups, now),
+    semantic,
   });
 }
 

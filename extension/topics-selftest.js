@@ -107,6 +107,38 @@ function tabOutSelfTest() {
   const empty = T.classify([], { now: 1000 });
   check('empty input yields no groups', empty.groups.length === 0 && empty.leftoverTabs.length === 0);
 
+  // 10-13. Semantic path, with hand-made unit vectors standing in for the model.
+  // Two "rates" titles share no word (one is Chinese); two "Kyoto" titles share one.
+  const unit = (...xs) => { const n = Math.hypot(...xs); return Float32Array.from(xs.map(x => x / n)); };
+  const sem = [
+    tab(21, 'https://www.reuters.com/markets/fed', 'Fed holds interest rates steady'),
+    tab(22, 'https://www.caixin.com/2026/fed.html', '美联储维持利率不变'),
+    tab(23, 'https://www.japan-guide.com/kyoto', 'Kyoto 3-day itinerary'),
+    tab(24, 'https://www.japan-guide.com/shinkansen', 'Tokyo to Kyoto by Shinkansen'),
+    tab(25, 'https://www.theverge.com/mac-studio', 'Mac Studio M4 Ultra review'),
+  ];
+  const vectors = new Map([
+    [sem[0].text, unit(1, 0.1, 0)],
+    [sem[1].text, unit(0.95, 0.2, 0)],
+    [sem[2].text, unit(0, 1, 0.1)],
+    [sem[3].text, unit(0.1, 0.9, 0.2)],
+    [sem[4].text, unit(0.2, 0, 1)],
+  ]);
+  const semOut = T.classify(sem, { now: 1000, embeddings: vectors });
+  const ratesGroup = semOut.groups.find(g => g.tabs.some(t => t.id === 22));
+  check('semantic: groups titles with no shared word',
+    semOut.semantic === true && !!ratesGroup && ratesGroup.tabs.some(t => t.id === 21));
+  check('semantic: unrelated title stays a leftover',
+    semOut.leftoverTabs.some(t => t.id === 25) && !semOut.groups.some(g => g.tabs.some(t => t.id === 25)));
+  check('semantic: no shared word -> label from the central title',
+    !!ratesGroup && ratesGroup.label.length > 0 && ratesGroup.label.length <= T.TOPIC_CONFIG.MEDOID_LABEL_CHARS + 1, ratesGroup && ratesGroup.label);
+  const kyotoGroup = semOut.groups.find(g => g.tabs.some(t => t.id === 23));
+  check('semantic: shared word still names the card', !!kyotoGroup && kyotoGroup.label === 'Kyoto', kyotoGroup && kyotoGroup.label);
+
+  // 14. One missing vector -> the whole step falls back to word overlap
+  const partial = new Map([...vectors].slice(0, 4));
+  check('semantic: a missing vector falls back to words', T.classify(sem, { now: 1000, embeddings: partial }).semantic === false);
+
   const report = { passed, failed };
   if (failed.length) console.warn('[tab-out] self-test FAILED', report);
   else console.info(`[tab-out] self-test passed (${passed.length} checks)`);

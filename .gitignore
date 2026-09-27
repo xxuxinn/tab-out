@@ -6,3 +6,8 @@ docs/superpowers/
 
 # Personal config (landing page patterns, etc.) — never push to GitHub
 extension/config.local.js
+
+# Semantic topics: model + library files come from scripts/setup-model.sh, never git
+extension/models/
+extension/vendor/
+scripts/.bench-cache/

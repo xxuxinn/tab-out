@@ -1160,9 +1160,9 @@ async function renderStaticDashboard() {
  */
 async function renderOpenTabsSection(view) {
   const realTabs = getRealTabs();
-  const { groups, topicCount } = view === TabOutGrouping.VIEW_MODES.TOPIC
+  const { groups, topicCount, similarity } = view === TabOutGrouping.VIEW_MODES.TOPIC
     ? await buildTopicGroups(realTabs)
-    : { groups: TabOutGrouping.buildDomainGroups(realTabs), topicCount: 0 };
+    : { groups: TabOutGrouping.buildDomainGroups(realTabs), topicCount: 0, similarity: null };
   domainGroups = groups;
 
   const section  = document.getElementById('openTabsSection');
@@ -1182,7 +1182,7 @@ async function renderOpenTabsSection(view) {
   const domainCount = groups.filter(g => g.kind === TabOutGrouping.GROUP_KINDS.DOMAIN
                                        || g.kind === TabOutGrouping.GROUP_KINDS.CUSTOM).length;
   const summary = view === TabOutGrouping.VIEW_MODES.TOPIC
-    ? `${plural(topicCount, 'topic')} &nbsp;&middot;&nbsp; ${plural(domainCount, 'domain')}`
+    ? `${plural(topicCount, 'topic')} &nbsp;&middot;&nbsp; ${plural(domainCount, 'domain')}${similarityBadge(similarity)}`
     : plural(groups.length, 'domain');
 
   if (titleEl) titleEl.textContent = 'Open tabs';
@@ -1191,30 +1191,95 @@ async function renderOpenTabsSection(view) {
   section.style.display = 'block';
 }
 
+/* ----------------------------------------------------------------
+   SEMANTIC SIMILARITY — embeddings.js, model runs in the browser
+
+   similarity mode shown after the topic count:
+     'semantic'  every title had a cached vector; grouped by meaning
+     'refining'  new titles are being embedded; words for now, the
+                 grid repaints by itself when they are ready
+     'words'     the model failed; word overlap only
+     'missing'   scripts/setup-model.sh has not been run on this Mac
+   ---------------------------------------------------------------- */
+
+const SIMILARITY_BADGES = Object.freeze({
+  semantic: { text: 'semantic',   hint: 'Grouped by meaning with the on-device model' },
+  refining: { text: 'refining…',  hint: 'Reading new tab titles with the on-device model' },
+  words:    { text: 'words only', hint: 'The on-device model failed; see the console' },
+  missing:  { text: 'words only', hint: 'Run scripts/setup-model.sh, then reload Tab Out, to group by meaning' },
+});
+
+function similarityBadge(mode) {
+  const badge = SIMILARITY_BADGES[mode];
+  return badge ? ` &nbsp;&middot;&nbsp; <span class="similarity-badge" title="${badge.hint}">${badge.text}</span>` : '';
+}
+
+let embeddingRun    = null;
+let embeddingFailed = false;
+
+// Embed new titles in the background, then repaint the topic grid once
+function embedInBackground(titles) {
+  if (embeddingRun) return;
+  embeddingRun = TabOutEmbeddings.embed(titles)
+    .then(async () => {
+      if (await getGroupView() === TabOutGrouping.VIEW_MODES.TOPIC) {
+        await fetchOpenTabs();   // tabs may have closed while the model ran
+        await renderOpenTabsSection(TabOutGrouping.VIEW_MODES.TOPIC);
+      }
+    })
+    .catch(err => {
+      console.warn('[tab-out] on-device topic model failed, using word overlap:', err);
+      embeddingFailed = true;
+    })
+    .finally(() => { embeddingRun = null; });
+}
+
 /**
- * buildTopicGroups(realTabs) -> { groups, topicCount }
+ * semanticInputs(realTabs) -> { embeddings: Map | null, similarity }
+ * Never waits for the model: only cached vectors are used for this paint.
+ */
+async function semanticInputs(realTabs) {
+  if (typeof TabOutEmbeddings === 'undefined') return { embeddings: null, similarity: 'missing' };
+  if (await TabOutEmbeddings.status() !== 'ready') return { embeddings: null, similarity: 'missing' };
+  if (embeddingFailed) return { embeddings: null, similarity: 'words' };
+
+  const titles = TabOutGrouping.topicTitles(realTabs);
+  const { vectors, missing } = await TabOutEmbeddings.lookup(titles);
+  if (missing.length === 0) return { embeddings: vectors, similarity: 'semantic' };
+  embedInBackground(missing);
+  return { embeddings: null, similarity: 'refining' };
+}
+
+/**
+ * buildTopicGroups(realTabs) -> { groups, topicCount, similarity }
  *
  * Gathers everything the pure classifier needs (rules from config.local.js,
- * native tab group names, the label cache), runs it, and saves the cache.
- * Any failure falls back to the domain view with a toast, so the page
+ * native tab group names, the label cache, cached title embeddings), runs
+ * it, and saves the cache. A model problem only downgrades to word overlap;
+ * any other failure falls back to the domain view with a toast, so the page
  * never goes blank.
  */
 async function buildTopicGroups(realTabs) {
   try {
     const now = Date.now();
+    const { embeddings, similarity } = await semanticInputs(realTabs).catch(err => {
+      console.warn('[tab-out] embedding cache unavailable, using word overlap:', err);
+      return { embeddings: null, similarity: 'words' };
+    });
     const ctx = {
       rules:        typeof LOCAL_TOPIC_RULES !== 'undefined' ? LOCAL_TOPIC_RULES : [],
       nativeGroups: await fetchNativeGroupTitles(realTabs),
       cache:        await loadTopicCache(),
+      embeddings,
       now,
     };
     const { groups, topicCount, cacheUpdate } = TabOutGrouping.buildTopicView(realTabs, ctx);
     await saveTopicCache(ctx.cache, cacheUpdate, realTabs.map(t => t.url), now);
-    return { groups, topicCount };
+    return { groups, topicCount, similarity };
   } catch (err) {
     console.warn('[tab-out] topic view failed, showing domains:', err);
     showToast('Topic view unavailable, showing domains');
-    return { groups: TabOutGrouping.buildDomainGroups(realTabs), topicCount: 0 };
+    return { groups: TabOutGrouping.buildDomainGroups(realTabs), topicCount: 0, similarity: null };
   }
 }
 
